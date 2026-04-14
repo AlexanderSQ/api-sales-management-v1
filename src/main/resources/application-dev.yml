@@ -1,0 +1,16 @@
+quarkus:
+  datasource:
+    username: postgres
+    password: postgres
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/db_sales
+
+  hibernate-orm:
+    database:
+      generation: drop-and-create
+    log:
+      sql: true
+
+kafka:
+  bootstrap:
+    servers: localhost:9092

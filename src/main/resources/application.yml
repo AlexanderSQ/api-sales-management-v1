@@ -1,0 +1,53 @@
+quarkus:
+  application:
+    name: api-sales-management-v1
+
+  datasource:
+    db-kind: postgresql
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:postgres}
+    jdbc:
+      url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:db_sales}
+
+  hibernate-orm:
+    database:
+      generation: update
+    log:
+      sql: true
+
+  http:
+    port: 8080
+
+  swagger-ui:
+    always-include: true
+    path: /q/swagger-ui
+
+  smallrye-openapi:
+    path: /openapi
+
+  rest-client:
+    platzi-api:
+      url: https://api.escuelajs.co
+      scope: jakarta.inject.Singleton
+
+mp:
+  messaging:
+    outgoing:
+      sales-out:
+        connector: smallrye-kafka
+        topic: sales-topic
+        value:
+          serializer: org.apache.kafka.common.serialization.StringSerializer
+    incoming:
+      sales-in:
+        connector: smallrye-kafka
+        topic: sales-topic
+        auto:
+          offset:
+            reset: earliest
+        value:
+          deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+kafka:
+  bootstrap:
+    servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092}
