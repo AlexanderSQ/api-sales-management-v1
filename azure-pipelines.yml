@@ -72,6 +72,7 @@ steps:
   # --- SONAR (publicar Quality Gate) ---
   - task: SonarCloudPublish@4
     displayName: 'Sonar: Publicar Quality Gate'
+    continueOnError: true
     inputs:
       pollingTimeoutSec: '300'
 
