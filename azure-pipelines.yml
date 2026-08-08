@@ -70,6 +70,8 @@ steps:
       sqMavenPluginVersionChoice: 'latest'
 
   # --- SONAR (publicar Quality Gate) ---
+  # continueOnError: el analisis igual queda en SonarCloud; si el publish
+  # falla (403), queda como warning y el pipeline sigue.
   - task: SonarCloudPublish@4
     displayName: 'Sonar: Publicar Quality Gate'
     continueOnError: true
@@ -95,6 +97,9 @@ steps:
       helmVersionToInstall: '3.21.3'
 
   # --- DEPLOY ---
+  # OJO: sin comentarios dentro de 'arguments' (el bloque >- los une en una
+  # sola linea y Helm los tomaria como argumentos). Para activar rollback
+  # automatico cuando ya despliegue estable, agrega la linea:  --atomic
   - task: HelmDeploy@0
     displayName: 'Helm: Deploy backend'
     inputs:
@@ -116,7 +121,6 @@ steps:
         --set service.port=8080
         --set livenessProbe.httpGet.path=/q/health/live
         --set readinessProbe.httpGet.path=/q/health/ready
-        # --atomic   <- agrega esto cuando ya despliegue estable
 
   # --- HISTORIAL ---
   - task: CmdLine@2
