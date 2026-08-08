@@ -1,0 +1,138 @@
+# =============================================================
+# Pipeline CI/CD - microservicio QUARKUS api-sales-management-v1
+# alexandersq (Docker Hub) | alexanderjsq (Azure DevOps / Sonar org)
+# Java 25 | Deploy: AKS del profesor
+# =============================================================
+
+trigger:
+  branches:
+    include:
+      - main
+
+resources:
+  repositories:
+    - repository: repo-devops-helm      # repo del chart de Helm (Azure Repos)
+      name: devops-helm
+      type: git
+      ref: refs/heads/main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+  # --- CHECKOUT ---
+  - checkout: self
+    clean: true
+    path: s
+    fetchDepth: 0
+    persistCredentials: true
+    displayName: 'Git: Clonar codigo fuente'
+
+  - checkout: repo-devops-helm
+    clean: true
+    path: devops-helm
+    displayName: 'Git: Clonar repositorio Helm'
+
+  # --- JDK 25 (tu pom usa maven.compiler.release=25) ---
+  - task: JavaToolInstaller@0
+    displayName: 'Java: Usar JDK 25'
+    inputs:
+      versionSpec: '25'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  # --- SONAR (preparar) ---
+  - task: SonarCloudPrepare@4
+    displayName: 'Sonar: Preparar analisis'
+    inputs:
+      SonarCloud: 'SonarQubeCloud-ServiceConnection'
+      organization: 'alexanderjsq'
+      scannerMode: 'other'
+      extraProperties: |
+        sonar.projectKey=alexanderjsq_api-sales-management-v1
+        sonar.projectName=api-sales-management-v1
+
+  # --- BUILD + TEST + ANALISIS ---
+  - task: Maven@4
+    displayName: 'Maven: Build, test y analisis'
+    inputs:
+      mavenPomFile: '$(Pipeline.Workspace)/s/pom.xml'
+      goals: 'clean package'
+      publishJUnitResults: true
+      testResultsFiles: '**/surefire-reports/TEST-*.xml'
+      javaHomeOption: 'Path'
+      jdkDirectory: '$(JAVA_HOME)'
+      mavenVersionOption: 'Default'
+      mavenAuthenticateFeed: false
+      effectivePomSkip: false
+      sonarQubeRunAnalysis: true
+      sqMavenPluginVersionChoice: 'latest'
+
+  # --- SONAR (publicar Quality Gate) ---
+  - task: SonarCloudPublish@4
+    displayName: 'Sonar: Publicar Quality Gate'
+    inputs:
+      pollingTimeoutSec: '300'
+
+  # --- DOCKER build & push ---
+  - task: Docker@2
+    displayName: 'Docker: Build y push de la imagen'
+    inputs:
+      containerRegistry: 'DockerRegistry-Dev'
+      repository: 'alexandersq/backend-devops-dev'
+      command: 'buildAndPush'
+      Dockerfile: '$(Pipeline.Workspace)/s/src/main/docker/Dockerfile.jvm'
+      buildContext: '$(Pipeline.Workspace)/s'
+      tags: |
+        $(Build.BuildId)
+
+  # --- HELM install ---
+  - task: HelmInstaller@1
+    displayName: 'Helm: Instalar'
+    inputs:
+      helmVersionToInstall: '3.21.3'
+
+  # --- DEPLOY ---
+  - task: HelmDeploy@0
+    displayName: 'Helm: Deploy backend'
+    inputs:
+      connectionType: 'Kubernetes Service Connection'
+      kubernetesServiceConnection: 'Kubernetes-Dev-ServiceConnection'
+      namespace: 'alexandersq'
+      command: 'upgrade'
+      chartType: 'FilePath'
+      chartPath: '$(Pipeline.Workspace)/devops-helm/devops'
+      releaseName: 'alexandersq-backend'
+      valueFile: '$(Pipeline.Workspace)/devops-helm/devops/values.yaml'
+      arguments: >-
+        --install
+        --create-namespace
+        --wait
+        --timeout 5m
+        --set image.repository=alexandersq/backend-devops-dev
+        --set image.tag=$(Build.BuildId)
+        --set service.port=8080
+        --set livenessProbe.httpGet.path=/q/health/live
+        --set readinessProbe.httpGet.path=/q/health/ready
+        # --atomic   <- agrega esto cuando ya despliegue estable
+
+  # --- HISTORIAL ---
+  - task: CmdLine@2
+    displayName: 'Helm: Historial del release'
+    condition: always()
+    inputs:
+      script: |
+        helm history alexandersq-backend -n alexandersq || true
+
+  # --- TAG del build ---
+  - task: CmdLine@2
+    displayName: 'Git: Crear tag del build'
+    condition: succeeded()
+    inputs:
+      workingDirectory: '$(Pipeline.Workspace)/s'
+      script: |
+        git config user.name "Azure DevOps"
+        git config user.email "azure-devops@local"
+        git tag "$(Build.BuildId)"
+        git push origin "$(Build.BuildId)" || true
