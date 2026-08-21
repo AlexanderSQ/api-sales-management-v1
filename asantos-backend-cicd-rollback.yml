@@ -1,0 +1,54 @@
+# =============================================================
+# Pipeline de ROLLBACK - api-sales-management-v1
+# Revierte el release de Helm a una revision anterior en el AKS.
+# =============================================================
+
+trigger: none
+
+parameters:
+  - name: revision
+    displayName: 'Revision destino (0 = la anterior)'
+    type: number
+    default: 0
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  releaseName: 'alexandersq-backend'
+  namespace: 'alexandersq'
+
+steps:
+
+  - task: HelmInstaller@1
+    displayName: 'Helm: Instalar'
+    inputs:
+      helmVersionToInstall: '3.21.3'
+
+  - task: HelmDeploy@0
+    displayName: 'Helm: Ver historial del release'
+    inputs:
+      connectionType: 'Kubernetes Service Connection'
+      kubernetesServiceConnection: 'Kubernetes-Dev-ServiceConnection'
+      namespace: '$(namespace)'
+      command: 'history'
+      arguments: '$(releaseName)'
+
+  - task: HelmDeploy@0
+    displayName: 'Helm: Rollback'
+    inputs:
+      connectionType: 'Kubernetes Service Connection'
+      kubernetesServiceConnection: 'Kubernetes-Dev-ServiceConnection'
+      namespace: '$(namespace)'
+      command: 'rollback'
+      arguments: '$(releaseName) ${{ parameters.revision }} --wait --timeout 5m'
+
+  - task: HelmDeploy@0
+    displayName: 'Helm: Estado tras el rollback'
+    condition: always()
+    inputs:
+      connectionType: 'Kubernetes Service Connection'
+      kubernetesServiceConnection: 'Kubernetes-Dev-ServiceConnection'
+      namespace: '$(namespace)'
+      command: 'status'
+      arguments: '$(releaseName)'
